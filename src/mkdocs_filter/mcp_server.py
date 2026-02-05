@@ -29,9 +29,12 @@ from mcp.types import TextContent, Tool
 
 from mkdocs_filter.parsing import (
     BuildInfo,
+    InfoCategory,
+    InfoMessage,
     Issue,
     Level,
     extract_build_info,
+    group_info_messages,
     parse_mkdocs_output,
     read_state_file,
 )
@@ -60,6 +63,7 @@ class MkdocsFilterServer:
         self.pipe_mode = pipe_mode
         self.watch_mode = watch_mode
         self.issues: list[Issue] = []
+        self.info_messages: list[InfoMessage] = []
         self.build_info = BuildInfo()
         self.raw_output: list[str] = []
         self._issue_ids: dict[str, str] = {}  # Cache for stable issue IDs
@@ -153,6 +157,33 @@ class MkdocsFilterServer:
                     },
                 },
             ),
+            Tool(
+                name="get_info",
+                description="Get INFO-level messages like broken links, missing nav entries, absolute links",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "category": {
+                            "type": "string",
+                            "enum": [
+                                "all",
+                                "broken_link",
+                                "absolute_link",
+                                "unrecognized_link",
+                                "missing_nav",
+                                "no_git_logs",
+                            ],
+                            "default": "all",
+                            "description": "Filter by category",
+                        },
+                        "grouped": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Group messages by category",
+                        },
+                    },
+                },
+            ),
         ]
 
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -167,6 +198,8 @@ class MkdocsFilterServer:
             return self._handle_get_build_info()
         elif name == "get_raw_output":
             return self._handle_get_raw_output(arguments)
+        elif name == "get_info":
+            return self._handle_get_info(arguments)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     def _refresh_from_state_file(self) -> bool:
@@ -188,6 +221,7 @@ class MkdocsFilterServer:
         # Update our state from the file
         self._last_state_timestamp = state.timestamp
         self.issues = state.issues
+        self.info_messages = state.info_messages
         self.build_info = state.build_info
         self.raw_output = state.raw_output
         return True
@@ -327,6 +361,68 @@ class MkdocsFilterServer:
         last_n = arguments.get("last_n_lines", 100)
         lines = self.raw_output[-last_n:] if last_n > 0 else self.raw_output
         return [TextContent(type="text", text="\n".join(lines))]
+
+    def _handle_get_info(self, arguments: dict[str, Any]) -> list[TextContent]:
+        """Handle get_info tool call for INFO-level messages."""
+        # Refresh from state file if in watch mode
+        self._refresh_from_state_file()
+
+        category_filter = arguments.get("category", "all")
+        grouped = arguments.get("grouped", True)
+
+        messages = self.info_messages
+
+        # Filter by category if specified
+        if category_filter != "all":
+            try:
+                cat = InfoCategory(category_filter)
+                messages = [m for m in messages if m.category == cat]
+            except ValueError:
+                return [TextContent(type="text", text=f"Unknown category: {category_filter}")]
+
+        if not messages:
+            return [
+                TextContent(
+                    type="text", text=json.dumps({"info_messages": [], "count": 0}, indent=2)
+                )
+            ]
+
+        if grouped:
+            # Group by category
+            groups = group_info_messages(messages)
+            result: dict[str, Any] = {
+                "info_messages": {},
+                "count": len(messages),
+            }
+            for cat, msgs in groups.items():
+                result["info_messages"][cat.value] = [
+                    {
+                        "file": m.file,
+                        "target": m.target,
+                        "suggestion": m.suggestion,
+                    }
+                    for m in msgs
+                ]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        else:
+            # Flat list
+            result_list = [
+                {
+                    "category": m.category.value,
+                    "file": m.file,
+                    "target": m.target,
+                    "suggestion": m.suggestion,
+                }
+                for m in messages
+            ]
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps(
+                        {"info_messages": result_list, "count": len(messages)}, indent=2
+                    ),
+                )
+            ]
 
     def _parse_output(self, output: str) -> None:
         """Parse mkdocs output and extract issues and build info."""

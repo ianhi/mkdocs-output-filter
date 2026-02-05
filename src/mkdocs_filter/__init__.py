@@ -213,6 +213,7 @@ class StreamingProcessor:
 
         state = StateFileData(
             issues=self.all_issues,
+            info_messages=self.all_info_messages,
             build_info=self.build_info,
             raw_output=self.raw_buffer,
         )

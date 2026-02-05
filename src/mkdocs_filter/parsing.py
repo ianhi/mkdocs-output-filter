@@ -601,11 +601,35 @@ def build_info_from_dict(data: dict[str, Any]) -> BuildInfo:
     )
 
 
+def info_message_to_dict(msg: InfoMessage) -> dict[str, Any]:
+    """Convert an InfoMessage to a JSON-serializable dict."""
+    result: dict[str, Any] = {
+        "category": msg.category.value,
+        "file": msg.file,
+    }
+    if msg.target:
+        result["target"] = msg.target
+    if msg.suggestion:
+        result["suggestion"] = msg.suggestion
+    return result
+
+
+def info_message_from_dict(data: dict[str, Any]) -> InfoMessage:
+    """Create an InfoMessage from a dict."""
+    return InfoMessage(
+        category=InfoCategory(data["category"]),
+        file=data["file"],
+        target=data.get("target"),
+        suggestion=data.get("suggestion"),
+    )
+
+
 @dataclass
 class StateFileData:
     """Data stored in the state file for sharing between CLI and MCP server."""
 
     issues: list[Issue] = field(default_factory=list)
+    info_messages: list[InfoMessage] = field(default_factory=list)
     build_info: BuildInfo = field(default_factory=BuildInfo)
     raw_output: list[str] = field(default_factory=list)
     timestamp: float = field(default_factory=time.time)
@@ -615,6 +639,7 @@ class StateFileData:
         """Convert to JSON-serializable dict."""
         return {
             "issues": [issue_to_dict(i) for i in self.issues],
+            "info_messages": [info_message_to_dict(m) for m in self.info_messages],
             "build_info": build_info_to_dict(self.build_info),
             "raw_output": self.raw_output[-500:],  # Keep last 500 lines
             "timestamp": self.timestamp,
@@ -626,6 +651,7 @@ class StateFileData:
         """Create from a dict."""
         return cls(
             issues=[issue_from_dict(i) for i in data.get("issues", [])],
+            info_messages=[info_message_from_dict(m) for m in data.get("info_messages", [])],
             build_info=build_info_from_dict(data.get("build_info", {})),
             raw_output=data.get("raw_output", []),
             timestamp=data.get("timestamp", 0),
