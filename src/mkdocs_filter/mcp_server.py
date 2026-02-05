@@ -294,7 +294,32 @@ class MkdocsFilterServer:
     def _handle_get_build_info(self) -> list[TextContent]:
         """Handle get_build_info tool call."""
         # Refresh from state file if in watch mode
-        self._refresh_from_state_file()
+        refreshed = self._refresh_from_state_file()
+
+        # Include diagnostic info if in watch mode
+        if self.watch_mode:
+            from mkdocs_filter.parsing import find_project_root, get_state_file_path
+
+            project_root = find_project_root()
+            state_path = get_state_file_path(self.project_dir)
+
+            diag = {
+                "watch_mode": True,
+                "state_file_found": refreshed or self._last_state_timestamp > 0,
+                "project_root": str(project_root) if project_root else None,
+                "state_file_path": str(state_path) if state_path else None,
+                "cwd": str(Path.cwd()),
+            }
+            if not (refreshed or self._last_state_timestamp > 0):
+                diag["hint"] = (
+                    "No state file found. Make sure mkdocs-output-filter is running with --share-state flag "
+                    "in a directory containing mkdocs.yml"
+                )
+
+            build_info = json.loads(self._get_build_info_json())
+            build_info["diagnostics"] = diag
+            return [TextContent(type="text", text=json.dumps(build_info, indent=2))]
+
         return [TextContent(type="text", text=self._get_build_info_json())]
 
     def _handle_get_raw_output(self, arguments: dict[str, Any]) -> list[TextContent]:

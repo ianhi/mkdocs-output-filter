@@ -654,12 +654,13 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
                 processor.process_line(line)
 
                 # When build completes or server starts, show results
+                # Order: build time, info groups, then warnings/errors (most visible at end)
+                # Server URL is shown in spinner, not printed separately
                 if boundary in (ChunkBoundary.BUILD_COMPLETE, ChunkBoundary.SERVER_STARTED):
                     live.stop()
-                    print_pending_issues()
-                    print_info_groups_inline()
                     print_build_time_inline()
-                    print_server_url_inline()
+                    print_info_groups_inline()
+                    print_pending_issues()
                     live.start()
 
                 # On rebuild start, reset issue counter for fresh display
@@ -671,10 +672,11 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
             processor.process_line(line)
 
             # When build completes or server starts, show results
+            # Order: build time, info groups, then warnings/errors (most visible at end)
             if boundary in (ChunkBoundary.BUILD_COMPLETE, ChunkBoundary.SERVER_STARTED):
-                print_pending_issues()
-                print_info_groups_inline()
                 print_build_time_inline()
+                print_info_groups_inline()
+                print_pending_issues()
                 print_server_url_inline()
 
             # On rebuild start, reset issue counter
@@ -685,10 +687,11 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
     all_issues, build_info = processor.finalize()
 
     # Print any remaining pending issues (for cases without chunk boundaries)
+    # Order: build time, info groups, then warnings/errors (most visible at end)
     if pending_issues:
-        print_pending_issues()
-        print_info_groups_inline()
         print_build_time_inline()
+        print_info_groups_inline()
+        print_pending_issues()
         print_server_url_inline()
 
     # If we never saw valid mkdocs output, something went wrong - show raw output
