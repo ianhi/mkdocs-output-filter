@@ -8,6 +8,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import select
@@ -15,10 +16,12 @@ import sys
 import termios
 import threading
 import tty
+import urllib.request
 from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
 from queue import Empty, Queue
+from urllib.error import HTTPError, URLError
 
 from rich.console import Console
 from rich.panel import Panel
@@ -912,6 +915,131 @@ def run_interactive_mode(console: Console, args: argparse.Namespace) -> int:
     return 1 if error_count else 0
 
 
+def fetch_remote_log(url: str) -> str | None:
+    """Fetch build log from a remote URL.
+
+    Handles:
+    - ReadTheDocs API v3 build endpoints
+    - Plain text log files
+    - Generic URLs returning text content
+
+    Returns the log content as a string, or None on error.
+    """
+    try:
+        # Check if this is a ReadTheDocs API URL
+        if "readthedocs.org/api/v3" in url and "/builds/" in url:
+            # ReadTheDocs API - need to fetch the build data and extract log
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                # The build object has 'commands' with output
+                if "commands" in data:
+                    log_lines = []
+                    for cmd in data["commands"]:
+                        if "output" in cmd:
+                            log_lines.append(cmd["output"])
+                    return "\n".join(log_lines)
+                # Or it might have a direct 'output' field
+                if "output" in data:
+                    return str(data["output"])
+                # Fallback - return the raw JSON as text
+                return json.dumps(data, indent=2)
+
+        # Generic URL - fetch as text
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "mkdocs-output-filter/0.1.0",
+                "Accept": "text/plain, text/html, application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            content: str = response.read().decode("utf-8")
+            # If it's JSON, try to extract log content
+            if response.headers.get("Content-Type", "").startswith("application/json"):
+                try:
+                    data = json.loads(content)
+                    # Common patterns for log data in JSON
+                    for key in ["output", "log", "logs", "build_log", "stdout", "stderr"]:
+                        if key in data:
+                            value = data[key]
+                            if isinstance(value, str):
+                                return value
+                            if isinstance(value, list):
+                                return "\n".join(str(v) for v in value)
+                            return str(value)
+                except json.JSONDecodeError:
+                    pass
+            return content
+
+    except HTTPError as e:
+        print(f"HTTP Error {e.code}: {e.reason}", file=sys.stderr)
+        return None
+    except URLError as e:
+        print(f"URL Error: {e.reason}", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Error fetching URL: {e}", file=sys.stderr)
+        return None
+
+
+def run_url_mode(console: Console, args: argparse.Namespace) -> int:
+    """Fetch and process a remote build log from a URL."""
+    url = args.url
+
+    # Show spinner while fetching
+    if not args.no_progress and not args.no_color:
+        from rich.live import Live
+        from rich.spinner import Spinner
+
+        with Live(console=console, refresh_per_second=10, transient=True) as live:
+            spinner = Spinner("dots", text=f" Fetching {url}", style="cyan")
+            live.update(spinner)
+            content = fetch_remote_log(url)
+    else:
+        console.print(f"[dim]Fetching {url}...[/dim]")
+        content = fetch_remote_log(url)
+
+    if content is None:
+        console.print("[red]Failed to fetch build log[/red]")
+        return 1
+
+    # Parse the content
+    lines = content.splitlines()
+    console.print(f"[dim]Processing {len(lines)} lines...[/dim]")
+    console.print()
+
+    # Use the batch processing logic
+    all_issues = parse_mkdocs_output(lines)
+
+    # Filter if needed
+    if args.errors_only:
+        all_issues = [i for i in all_issues if i.level == Level.ERROR]
+
+    # Parse INFO messages
+    info_messages = parse_info_messages(lines)
+    info_groups = group_info_messages(info_messages)
+
+    # Extract build info
+    build_info = extract_build_info(lines)
+
+    # Display results
+    if info_groups:
+        print_info_groups(console, info_groups, verbose=args.verbose)
+
+    for issue in all_issues:
+        print_issue(console, issue, verbose=args.verbose)
+
+    if not all_issues and not info_messages:
+        console.print("[green]✓ No warnings or errors found[/green]")
+
+    # Print summary
+    print_summary(console, all_issues, build_info, verbose=args.verbose)
+
+    error_count = sum(1 for i in all_issues if i.level == Level.ERROR)
+    return 1 if error_count else 0
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     import argparse
@@ -925,6 +1053,10 @@ Examples:
     mkdocs build --verbose 2>&1 | mkdocs-output-filter -v
     mkdocs serve 2>&1 | mkdocs-output-filter --share-state
     mkdocs build 2>&1 | mkdocs-output-filter --errors-only
+
+    # Fetch and process remote build log (e.g., ReadTheDocs)
+    mkdocs-output-filter --url https://readthedocs.org/api/v3/projects/myproject/builds/123/
+    mkdocs-output-filter --url https://example.com/build.log
 
     # MCP server mode (for code agents)
     mkdocs-output-filter --mcp --watch
@@ -972,6 +1104,11 @@ Note: Use --verbose with mkdocs to get file paths for code block errors.
         "--state-dir",
         type=str,
         help="Directory for state file (default: auto-detect from mkdocs.yml location, or cwd)",
+    )
+    parser.add_argument(
+        "--url",
+        type=str,
+        help="Fetch and process build log from URL (e.g., ReadTheDocs build log)",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -1021,6 +1158,10 @@ Note: Use --verbose with mkdocs to get file paths for code block errors.
             width=120 if sys.stdin.isatty() is False else None,
             soft_wrap=True,
         )
+
+        # URL mode - fetch and process remote build log
+        if args.url:
+            return run_url_mode(console, args)
 
         # Interactive mode
         if args.interactive:

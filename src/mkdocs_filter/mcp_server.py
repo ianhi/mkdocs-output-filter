@@ -184,6 +184,25 @@ class MkdocsFilterServer:
                     },
                 },
             ),
+            Tool(
+                name="fetch_build_log",
+                description="Fetch and process a remote build log from a URL (e.g., ReadTheDocs)",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "URL of the build log to fetch",
+                        },
+                        "verbose": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Include full code blocks and tracebacks",
+                        },
+                    },
+                    "required": ["url"],
+                },
+            ),
         ]
 
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -200,6 +219,8 @@ class MkdocsFilterServer:
             return self._handle_get_raw_output(arguments)
         elif name == "get_info":
             return self._handle_get_info(arguments)
+        elif name == "fetch_build_log":
+            return self._handle_fetch_build_log(arguments)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     def _refresh_from_state_file(self) -> bool:
@@ -423,6 +444,88 @@ class MkdocsFilterServer:
                     ),
                 )
             ]
+
+    def _handle_fetch_build_log(self, arguments: dict[str, Any]) -> list[TextContent]:
+        """Handle fetch_build_log tool call - fetch and process a remote build log."""
+        url = arguments.get("url", "")
+        verbose = arguments.get("verbose", False)
+
+        if not url:
+            return [TextContent(type="text", text="Error: URL is required")]
+
+        # Import the fetch function from the main module
+        from mkdocs_filter import fetch_remote_log
+
+        # Fetch the remote log
+        content = fetch_remote_log(url)
+        if content is None:
+            return [
+                TextContent(
+                    type="text",
+                    text=json.dumps({"error": f"Failed to fetch build log from {url}"}, indent=2),
+                )
+            ]
+
+        # Parse the content
+        lines = content.splitlines()
+
+        # Parse issues
+        from mkdocs_filter.parsing import parse_info_messages
+
+        all_issues = parse_mkdocs_output(lines)
+
+        # Deduplicate issues
+        seen: set[tuple[Level, str]] = set()
+        unique_issues: list[Issue] = []
+        for issue in all_issues:
+            key = (issue.level, issue.message[:100])
+            if key not in seen:
+                seen.add(key)
+                unique_issues.append(issue)
+
+        # Parse INFO messages
+        info_messages = parse_info_messages(lines)
+
+        # Extract build info
+        build_info = extract_build_info(lines)
+
+        # Build response
+        error_count = sum(1 for i in unique_issues if i.level == Level.ERROR)
+        warning_count = sum(1 for i in unique_issues if i.level == Level.WARNING)
+
+        response: dict[str, Any] = {
+            "url": url,
+            "lines_processed": len(lines),
+            "total_issues": len(unique_issues),
+            "errors": error_count,
+            "warnings": warning_count,
+            "issues": [self._issue_to_dict(i, verbose=verbose) for i in unique_issues],
+        }
+
+        # Add info messages if any
+        if info_messages:
+            groups = group_info_messages(info_messages)
+            response["info_messages"] = {}
+            for cat, msgs in groups.items():
+                response["info_messages"][cat.value] = [
+                    {
+                        "file": m.file,
+                        "target": m.target,
+                        "suggestion": m.suggestion,
+                    }
+                    for m in msgs
+                ]
+            response["info_count"] = len(info_messages)
+
+        # Add build info if available
+        if build_info.server_url:
+            response["server_url"] = build_info.server_url
+        if build_info.build_dir:
+            response["build_dir"] = build_info.build_dir
+        if build_info.build_time:
+            response["build_time"] = build_info.build_time
+
+        return [TextContent(type="text", text=json.dumps(response, indent=2))]
 
     def _parse_output(self, output: str) -> None:
         """Parse mkdocs output and extract issues and build info."""
