@@ -11,25 +11,44 @@
 ```
 INFO    -  Cleaning site directory
 INFO    -  Building documentation to directory: /path/to/site
-INFO    -  Doc file 'page1.md' contains a link 'image.png'...
-INFO    -  Doc file 'page2.md' contains a link 'other.md'...
+INFO    -  Doc file 'index.md' contains a link 'img.png'...
+INFO    -  Doc file 'guide.md' contains a link 'old.md'...
+INFO    -  Doc file 'api.md' contains an unrecognized...
+INFO    -  Doc file 'tutorial.md' contains a link...
+INFO    -  Doc file 'reference.md' contains a link...
 WARNING -  markdown_exec: Execution of python code block
            exited with errors
 
 Code block is:
 
-  x = 1
-  y = 2
-  raise ValueError("test error")
+  import numpy as np
+  from mypackage import process_data
+
+  data = np.random.rand(100, 100)
+  result = process_data(data)
+  print(f"Result shape: {result.shape}")
+
+  # This will fail
+  raise ValueError("INTENTIONAL TEST ERROR")
 
 Output is:
 
   Traceback (most recent call last):
-    File "<code block: session test; n1>", line 3, in <module>
-      raise ValueError("test error")
-  ValueError: test error
+    File "<code block: session test; n1>", line 8, in <module>
+      raise ValueError("INTENTIONAL TEST ERROR")
+  ValueError: INTENTIONAL TEST ERROR
 
-INFO    -  Documentation built in 1.23 seconds
+INFO    -  Doc file 'changelog.md' contains a link...
+INFO    -  Doc file 'contributing.md' contains a link...
+WARNING -  [git-revision] Unable to read git logs for
+           'docs/new-page.md'. Is git installed?
+INFO    -  Doc file 'faq.md' contains a link 'old.md'...
+INFO    -  Doc file 'install.md' contains a link...
+WARNING -  Documentation file 'missing.md' contains a
+           link 'nonexistent.md', but the target is
+           not found among documentation files.
+INFO    -  Building search index...
+INFO    -  Documentation built in 21.54 seconds
 ```
 
 </div>
@@ -37,26 +56,39 @@ INFO    -  Documentation built in 1.23 seconds
 <div class="comparison-header good">Filtered output ✓</div>
 
 ```
-Built in 1.23s
+Built in 21.54s
 
-⚠ WARNING [markdown_exec] ValueError: test error
-   📍 session 'test' → line 3
 
-╭──────────── Code Block ────────────╮
-│   1 x = 1                          │
-│   2 y = 2                          │
-│   3 raise ValueError("test error") │
-╰────────────────────────────────────╯
-╭────── Error Output ──────╮
-│ ValueError: test error   │
-╰── use -v for full trace ─╯
+⚠ WARNING [markdown_exec] ValueError: INTENTIONAL TEST ERROR
+   📍 session 'test' → line 8
 
-────────────────────────────────────
-Summary: 1 warning(s)
+╭─────────────────── Code Block ───────────────────╮
+│   1 import numpy as np                           │
+│   2 from mypackage import process_data           │
+│   3                                              │
+│   4 data = np.random.rand(100, 100)              │
+│   5 result = process_data(data)                  │
+│   6 print(f"Result shape: {result.shape}")       │
+│   7                                              │
+│   8 raise ValueError("INTENTIONAL TEST ERROR")   │
+╰──────────────────────────────────────────────────╯
+╭────────────── Error Output ──────────────╮
+│ ValueError: INTENTIONAL TEST ERROR       │
+╰────────── use -v for full traceback ─────╯
 
-Built in 1.23s
+⚠ WARNING [git-revision] Unable to read git logs
+   📍 docs/new-page.md
+
+⚠ WARNING Documentation file 'missing.md' contains
+   a link 'nonexistent.md', but target not found
+
+────────────────────────────────────────
+Summary: 3 warning(s)
+
+Built in 21.54s
 
 Hint: -v for verbose output, --raw for full mkdocs output
+Tip: Use mkdocs build --verbose to see source files
 ```
 
 </div>
