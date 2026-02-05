@@ -518,6 +518,10 @@ def run_batch_mode(console: Console, args: argparse.Namespace, show_spinner: boo
             seen.add(key)
             unique_issues.append(issue)
 
+    # Parse INFO messages
+    info_messages = parse_info_messages(lines)
+    info_groups = group_info_messages(info_messages)
+
     # Print issues
     if not unique_issues:
         console.print("[green]✓ No warnings or errors[/green]")
@@ -525,6 +529,10 @@ def run_batch_mode(console: Console, args: argparse.Namespace, show_spinner: boo
         console.print()
         for issue in unique_issues:
             print_issue(console, issue, verbose=args.verbose)
+
+    # Print grouped INFO messages (if any)
+    if info_groups:
+        print_info_groups(console, info_groups, verbose=args.verbose)
 
     # Print summary
     print_summary(console, unique_issues, build_info, verbose=args.verbose)
@@ -580,6 +588,13 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
             console.print(f"[dim]Built in {processor.build_info.build_time}s[/dim]")
         console.print()
 
+    def print_info_groups_inline() -> None:
+        """Print grouped INFO messages when build completes."""
+        if processor.all_info_messages:
+            info_groups = group_info_messages(processor.all_info_messages)
+            if info_groups:
+                print_info_groups(console, info_groups, verbose=args.verbose)
+
     if spinner_active:
         with Live(console=console, refresh_per_second=10, transient=True) as live:
             for line in sys.stdin:
@@ -601,6 +616,7 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
                     live.stop()
                     print_build_info_inline()
                     print_pending_issues()
+                    print_info_groups_inline()
                     live.start()
 
                 # On rebuild start, reset issue counter for fresh display
@@ -615,6 +631,7 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
             if boundary in (ChunkBoundary.BUILD_COMPLETE, ChunkBoundary.SERVER_STARTED):
                 print_build_info_inline()
                 print_pending_issues()
+                print_info_groups_inline()
 
             # On rebuild start, reset issue counter
             elif boundary == ChunkBoundary.REBUILD_STARTED:
@@ -626,6 +643,7 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
     # Print any remaining pending issues (for cases without chunk boundaries)
     if pending_issues:
         print_pending_issues()
+        print_info_groups_inline()
 
     # If we never saw valid mkdocs output, something went wrong - show raw output
     if not processor.saw_mkdocs_output and processor.raw_buffer:
