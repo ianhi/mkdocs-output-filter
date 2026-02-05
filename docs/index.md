@@ -11,13 +11,33 @@
 ```
 INFO    -  Cleaning site directory
 INFO    -  Building documentation to directory: /path/to/site
-INFO    -  Doc file 'index.md' contains a link 'img.png'...
-INFO    -  Doc file 'guide.md' contains a link 'old.md'...
-INFO    -  Doc file 'api.md' contains an unrecognized...
-INFO    -  Doc file 'tutorial.md' contains a link...
-INFO    -  Doc file 'reference.md' contains a link...
-WARNING -  markdown_exec: Execution of python code block
-           exited with errors
+INFO    -  Doc file 'index.md' contains a link 'img.png', but the target is not found
+INFO    -  Doc file 'guide.md' contains a link 'old-page.md', but the target is not found
+INFO    -  Doc file 'api.md' contains an unrecognized relative link 'ref.md#section'
+INFO    -  Doc file 'tutorial.md' contains a link '../images/fig1.png', target not found
+INFO    -  Doc file 'reference.md' contains a link 'deprecated.md', target not found
+INFO    -  Doc file 'examples.md' contains a link 'data/sample.csv', target not found
+INFO    -  Doc file 'advanced.md' contains a link 'legacy/old.md', target not found
+INFO    -  Doc file 'setup.md' contains a link 'requirements.txt', target not found
+INFO    -  Doc file 'config.md' contains a link 'schema.json', target not found
+INFO    -  Doc file 'plugins.md' contains a link 'hooks.py', target not found
+INFO    -  Doc file 'themes.md' contains a link 'custom.css', target not found
+INFO    -  Doc file 'extensions.md' contains a link 'macros.py', target not found
+INFO    -  Doc file 'deployment.md' contains a link 'docker-compose.yml', not found
+INFO    -  Doc file 'testing.md' contains a link 'fixtures/', target not found
+INFO    -  Doc file 'migration.md' contains a link 'upgrade-guide.md', target not found
+INFO    -  Doc file 'changelog.md' contains a link 'releases/v1.md', target not found
+INFO    -  Doc file 'contributing.md' contains a link 'CODE_OF_CONDUCT.md', not found
+INFO    -  Doc file 'faq.md' contains a link 'troubleshooting.md', target not found
+INFO    -  Doc file 'install.md' contains a link 'binaries/', target not found
+INFO    -  Doc file 'security.md' contains a link 'SECURITY.md', target not found
+INFO    -  Doc file 'performance.md' contains a link 'benchmarks/', target not found
+INFO    -  Doc file 'integrations.md' contains a link 'partners.md', target not found
+INFO    -  Doc file 'roadmap.md' contains a link 'milestones.md', target not found
+INFO    -  Doc file 'support.md' contains a link 'contact.md', target not found
+INFO    -  Doc file 'license.md' contains a link 'NOTICE', target not found
+INFO    -  Doc file 'credits.md' contains a link 'contributors.md', target not found
+WARNING -  markdown_exec: Execution of python code block exited with errors
 
 Code block is:
 
@@ -38,16 +58,12 @@ Output is:
       raise ValueError("INTENTIONAL TEST ERROR")
   ValueError: INTENTIONAL TEST ERROR
 
-INFO    -  Doc file 'changelog.md' contains a link...
-INFO    -  Doc file 'contributing.md' contains a link...
-WARNING -  [git-revision] Unable to read git logs for
-           'docs/new-page.md'. Is git installed?
-INFO    -  Doc file 'faq.md' contains a link 'old.md'...
-INFO    -  Doc file 'install.md' contains a link...
-WARNING -  Documentation file 'missing.md' contains a
-           link 'nonexistent.md', but the target is
-           not found among documentation files.
+WARNING -  [git-revision-date-localized-plugin] Unable to read git logs for 'docs/new-page.md'. Is git installed?
+WARNING -  Documentation file 'docs/guide/missing.md' contains a link 'nonexistent.md', but the target 'nonexistent.md' is not found among documentation files.
 INFO    -  Building search index...
+INFO    -  Search index built successfully
+INFO    -  Copying static assets...
+INFO    -  Static assets copied
 INFO    -  Documentation built in 21.54 seconds
 ```
 
@@ -55,41 +71,39 @@ INFO    -  Documentation built in 21.54 seconds
 <div class="comparison-item">
 <div class="comparison-header good">Filtered output ✓</div>
 
-```
-Built in 21.54s
+<div class="terminal">
+<span class="dim">Built in </span><span class="cyan">21.54</span><span class="dim">s</span>
 
+<span class="yellow">⚠ WARNING</span> <span class="dim">[markdown_exec]</span> ValueError: INTENTIONAL TEST ERROR
+<span class="cyan">   📍 session </span><span class="green">'test'</span><span class="cyan"> → line </span><span class="cyan-bold">8</span>
 
-⚠ WARNING [markdown_exec] ValueError: INTENTIONAL TEST ERROR
-   📍 session 'test' → line 8
+<span class="cyan">╭─────────────────── Code Block ───────────────────╮</span>
+<span class="cyan">│</span>   <span class="line-num">1</span> <span class="keyword">import</span> numpy <span class="keyword">as</span> np                           <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">2</span> <span class="keyword">from</span> mypackage <span class="keyword">import</span> process_data           <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">3</span>                                              <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">4</span> data = np.random.rand(<span class="number">100</span>, <span class="number">100</span>)              <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">5</span> result = process_data(data)                  <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">6</span> <span class="builtin">print</span>(<span class="string">f"Result shape: {result.shape}"</span>)       <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">7</span>                                              <span class="cyan">│</span>
+<span class="cyan">│</span>   <span class="line-num">8</span> <span class="keyword">raise</span> <span class="exception">ValueError</span>(<span class="string">"INTENTIONAL TEST ERROR"</span>)   <span class="cyan">│</span>
+<span class="cyan">╰──────────────────────────────────────────────────╯</span>
+<span class="red">╭────────────── Error Output ──────────────╮</span>
+<span class="red">│</span> ValueError: INTENTIONAL TEST ERROR       <span class="red">│</span>
+<span class="red">╰────────── use -v for full traceback ─────╯</span>
 
-╭─────────────────── Code Block ───────────────────╮
-│   1 import numpy as np                           │
-│   2 from mypackage import process_data           │
-│   3                                              │
-│   4 data = np.random.rand(100, 100)              │
-│   5 result = process_data(data)                  │
-│   6 print(f"Result shape: {result.shape}")       │
-│   7                                              │
-│   8 raise ValueError("INTENTIONAL TEST ERROR")   │
-╰──────────────────────────────────────────────────╯
-╭────────────── Error Output ──────────────╮
-│ ValueError: INTENTIONAL TEST ERROR       │
-╰────────── use -v for full traceback ─────╯
+<span class="yellow">⚠ WARNING</span> <span class="dim">[git-revision]</span> Unable to read git logs
+<span class="cyan">   📍 docs/new-page.md</span>
 
-⚠ WARNING [git-revision] Unable to read git logs
-   📍 docs/new-page.md
+<span class="yellow">⚠ WARNING</span> Link target not found
+<span class="cyan">   📍 docs/guide/missing.md → nonexistent.md</span>
 
-⚠ WARNING Documentation file 'missing.md' contains
-   a link 'nonexistent.md', but target not found
+<span class="dim">────────────────────────────────────────</span>
+Summary: <span class="yellow">3 warning(s)</span>
 
-────────────────────────────────────────
-Summary: 3 warning(s)
+<span class="dim">Built in </span><span class="cyan">21.54</span><span class="dim">s</span>
 
-Built in 21.54s
-
-Hint: -v for verbose output, --raw for full mkdocs output
-Tip: Use mkdocs build --verbose to see source files
-```
+<span class="dim">Hint: </span><span class="dim">-v</span><span class="dim"> for verbose, </span><span class="dim">--raw</span><span class="dim"> for full output</span>
+</div>
 
 </div>
 </div>
