@@ -951,35 +951,49 @@ def run_interactive_mode(console: Console, args: argparse.Namespace) -> int:
     return 1 if error_count else 0
 
 
+def _transform_readthedocs_url(url: str) -> str | None:
+    """Transform ReadTheDocs URLs to the raw log endpoint.
+
+    Handles:
+    - Web UI: https://app.readthedocs.org/projects/{project}/builds/{build_id}/
+    - API v3: https://readthedocs.org/api/v3/projects/{project}/builds/{build_id}/
+
+    Returns the raw log URL or None if not a ReadTheDocs URL.
+    """
+    # Pattern 1: Web UI URL
+    # https://app.readthedocs.org/projects/icechunk/builds/31290171/
+    match = re.match(r"https?://(?:app\.)?readthedocs\.org/projects/[^/]+/builds/(\d+)/?", url)
+    if match:
+        build_id = match.group(1)
+        return f"https://app.readthedocs.org/api/v2/build/{build_id}.txt"
+
+    # Pattern 2: API v3 URL
+    # https://readthedocs.org/api/v3/projects/icechunk/builds/31290171/
+    match = re.match(
+        r"https?://(?:app\.)?readthedocs\.org/api/v3/projects/[^/]+/builds/(\d+)/?", url
+    )
+    if match:
+        build_id = match.group(1)
+        return f"https://app.readthedocs.org/api/v2/build/{build_id}.txt"
+
+    return None
+
+
 def fetch_remote_log(url: str) -> str | None:
     """Fetch build log from a remote URL.
 
     Handles:
-    - ReadTheDocs API v3 build endpoints
+    - ReadTheDocs URLs (web UI and API) - auto-transforms to raw log endpoint
     - Plain text log files
     - Generic URLs returning text content
 
     Returns the log content as a string, or None on error.
     """
     try:
-        # Check if this is a ReadTheDocs API URL
-        if "readthedocs.org/api/v3" in url and "/builds/" in url:
-            # ReadTheDocs API - need to fetch the build data and extract log
-            req = urllib.request.Request(url, headers={"Accept": "application/json"})
-            with urllib.request.urlopen(req, timeout=30) as response:
-                data = json.loads(response.read().decode("utf-8"))
-                # The build object has 'commands' with output
-                if "commands" in data:
-                    log_lines = []
-                    for cmd in data["commands"]:
-                        if "output" in cmd:
-                            log_lines.append(cmd["output"])
-                    return "\n".join(log_lines)
-                # Or it might have a direct 'output' field
-                if "output" in data:
-                    return str(data["output"])
-                # Fallback - return the raw JSON as text
-                return json.dumps(data, indent=2)
+        # Transform ReadTheDocs URLs to raw log endpoint
+        rtd_url = _transform_readthedocs_url(url)
+        if rtd_url:
+            url = rtd_url
 
         # Generic URL - fetch as text
         req = urllib.request.Request(
