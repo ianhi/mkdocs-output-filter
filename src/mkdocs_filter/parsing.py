@@ -454,9 +454,24 @@ def dedent_code(code: str) -> str:
     return code
 
 
-# State file location: .mkdocs-output-filter/state.json in project root
+# State file location: .mkdocs-output-filter/state.json in git root (or cwd)
 STATE_DIR_NAME = ".mkdocs-output-filter"
 STATE_FILE_NAME = "state.json"
+
+
+def find_git_root() -> Path | None:
+    """Find the git repository root by looking for .git directory."""
+    cwd = Path.cwd()
+
+    # Check current directory and parents
+    for path in [cwd, *cwd.parents]:
+        if (path / ".git").exists():
+            return path
+        # Stop at home directory or root
+        if path == Path.home() or path == path.parent:
+            break
+
+    return None
 
 
 def find_project_root() -> Path | None:
@@ -477,13 +492,17 @@ def find_project_root() -> Path | None:
 def get_state_file_path(project_dir: Path | None = None) -> Path | None:
     """Get the path to the state file for a project.
 
-    Falls back to cwd if project root can't be found.
+    Priority:
+    1. Explicit project_dir if provided
+    2. Git root (most reliable for cross-directory access)
+    3. Current working directory as fallback
     """
     if project_dir is None:
-        project_dir = find_project_root()
+        # Prefer git root - it's predictable and works across subdirectories
+        project_dir = find_git_root()
 
     if project_dir is None:
-        # Fall back to cwd - the CLI will write here if it can't find mkdocs.yml
+        # Fall back to cwd
         project_dir = Path.cwd()
 
     return project_dir / STATE_DIR_NAME / STATE_FILE_NAME
@@ -492,44 +511,28 @@ def get_state_file_path(project_dir: Path | None = None) -> Path | None:
 def find_state_file() -> Path | None:
     """Search for an existing state file in common locations.
 
-    Searches (shallow, avoids going too deep):
-    1. Current working directory
-    2. Project root (where mkdocs.yml is found)
-    3. Parent directory (1 level up only)
-    4. Sibling directories (docs/, documentation/)
-    5. Subdirectories (docs/, documentation/)
+    Searches (in priority order):
+    1. Git root (preferred - works across all subdirectories)
+    2. Current working directory
+    3. Project root (where mkdocs.yml is found)
 
     Returns the path to the first state file found, or None.
     """
-    cwd = Path.cwd()
     state_file = STATE_DIR_NAME + "/" + STATE_FILE_NAME
-
-    # Collect all candidate directories to check (shallow search)
     candidates: list[Path] = []
 
-    # 1. Current directory (most common)
-    candidates.append(cwd)
+    # 1. Git root (preferred - predictable location)
+    git_root = find_git_root()
+    if git_root:
+        candidates.append(git_root)
 
-    # 2. Project root (where mkdocs.yml is)
+    # 2. Current directory
+    candidates.append(Path.cwd())
+
+    # 3. Project root (where mkdocs.yml is)
     project_root = find_project_root()
     if project_root:
         candidates.append(project_root)
-
-    # 3. Parent directory (1 level up only)
-    candidates.append(cwd.parent)
-
-    # 4. Sibling directories (common docs locations)
-    common_dirs = ["docs", "documentation"]
-    for sibling in common_dirs:
-        sibling_path = cwd.parent / sibling
-        if sibling_path.exists() and sibling_path.is_dir():
-            candidates.append(sibling_path)
-
-    # 5. Subdirectories (common docs locations)
-    for subdir in common_dirs:
-        subdir_path = cwd / subdir
-        if subdir_path.exists() and subdir_path.is_dir():
-            candidates.append(subdir_path)
 
     # Check each candidate for state file
     seen: set[Path] = set()
