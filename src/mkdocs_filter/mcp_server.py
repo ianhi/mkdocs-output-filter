@@ -430,6 +430,7 @@ def run_mcp_server(
     pipe_mode: bool = False,
     watch_mode: bool = False,
     initial_build: bool = False,
+    state_dir: str | None = None,
 ) -> int:
     """Run the MCP server with the given configuration.
 
@@ -440,6 +441,7 @@ def run_mcp_server(
         pipe_mode: Read mkdocs output from stdin
         watch_mode: Watch state file for updates
         initial_build: Run initial mkdocs build on startup
+        state_dir: Directory to search for state file (for watch mode)
 
     Returns:
         Exit code (0 for success, non-zero for error)

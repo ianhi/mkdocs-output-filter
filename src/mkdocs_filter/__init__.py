@@ -965,6 +965,11 @@ Note: Use --verbose with mkdocs to get file paths for code block errors.
         action="store_true",
         help="Write state to .mkdocs-output-filter/state.json for MCP server access",
     )
+    parser.add_argument(
+        "--state-dir",
+        type=str,
+        help="Directory for state file (default: auto-detect from mkdocs.yml location, or cwd)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--mcp",
@@ -996,6 +1001,7 @@ Note: Use --verbose with mkdocs to get file paths for code block errors.
             project_dir=args.project_dir,
             pipe_mode=args.pipe,
             watch_mode=args.watch,
+            state_dir=args.state_dir,
         )
 
     try:

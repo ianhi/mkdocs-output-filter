@@ -475,14 +475,78 @@ def find_project_root() -> Path | None:
 
 
 def get_state_file_path(project_dir: Path | None = None) -> Path | None:
-    """Get the path to the state file for a project."""
+    """Get the path to the state file for a project.
+
+    Falls back to cwd if project root can't be found.
+    """
     if project_dir is None:
         project_dir = find_project_root()
 
     if project_dir is None:
-        return None
+        # Fall back to cwd - the CLI will write here if it can't find mkdocs.yml
+        project_dir = Path.cwd()
 
     return project_dir / STATE_DIR_NAME / STATE_FILE_NAME
+
+
+def find_state_file() -> Path | None:
+    """Search for an existing state file in common locations.
+
+    Searches (shallow, avoids going too deep):
+    1. Current working directory
+    2. Project root (where mkdocs.yml is found)
+    3. Parent directory (1 level up only)
+    4. Sibling directories (docs/, documentation/)
+    5. Subdirectories (docs/, documentation/)
+
+    Returns the path to the first state file found, or None.
+    """
+    cwd = Path.cwd()
+    state_file = STATE_DIR_NAME + "/" + STATE_FILE_NAME
+
+    # Collect all candidate directories to check (shallow search)
+    candidates: list[Path] = []
+
+    # 1. Current directory (most common)
+    candidates.append(cwd)
+
+    # 2. Project root (where mkdocs.yml is)
+    project_root = find_project_root()
+    if project_root:
+        candidates.append(project_root)
+
+    # 3. Parent directory (1 level up only)
+    candidates.append(cwd.parent)
+
+    # 4. Sibling directories (common docs locations)
+    common_dirs = ["docs", "documentation"]
+    for sibling in common_dirs:
+        sibling_path = cwd.parent / sibling
+        if sibling_path.exists() and sibling_path.is_dir():
+            candidates.append(sibling_path)
+
+    # 5. Subdirectories (common docs locations)
+    for subdir in common_dirs:
+        subdir_path = cwd / subdir
+        if subdir_path.exists() and subdir_path.is_dir():
+            candidates.append(subdir_path)
+
+    # Check each candidate for state file
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+
+            state_path = resolved / state_file
+            if state_path.exists():
+                return state_path
+        except OSError:
+            continue
+
+    return None
 
 
 def issue_to_dict(issue: Issue) -> dict[str, Any]:
@@ -608,9 +672,19 @@ def write_state_file(
 def read_state_file(project_dir: Path | None = None) -> StateFileData | None:
     """Read state from the state file.
 
+    If project_dir is specified, reads from that location.
+    Otherwise, searches for the state file in common locations.
+
     Returns the state data, or None if the file doesn't exist or can't be read.
     """
-    state_path = get_state_file_path(project_dir)
+    state_path: Path | None
+    if project_dir is not None:
+        # Explicit project dir - use it directly
+        state_path = project_dir / STATE_DIR_NAME / STATE_FILE_NAME
+    else:
+        # Search for state file in common locations
+        state_path = find_state_file()
+
     if state_path is None or not state_path.exists():
         return None
 
