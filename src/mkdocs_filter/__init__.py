@@ -38,13 +38,18 @@ from mkdocs_filter.parsing import (  # noqa: E402
     ChunkBoundary,
     Issue,
     Level,
+    StateFileData,
     StreamingState,
     dedent_code,
     detect_chunk_boundary,
     extract_build_info,
+    find_project_root,
+    get_state_file_path,
     is_in_multiline_block,
     parse_markdown_exec_issue,
     parse_mkdocs_output,
+    read_state_file,
+    write_state_file,
 )
 
 __version__ = "0.1.0"
@@ -55,6 +60,7 @@ __all__ = [
     "Issue",
     "BuildInfo",
     "StreamingState",
+    "StateFileData",
     "ChunkBoundary",
     "DisplayMode",
     # Parsing functions
@@ -64,6 +70,11 @@ __all__ = [
     "parse_mkdocs_output",
     "parse_markdown_exec_issue",
     "dedent_code",
+    # State file functions
+    "find_project_root",
+    "get_state_file_path",
+    "read_state_file",
+    "write_state_file",
     # Streaming
     "StreamingProcessor",
     # CLI
@@ -76,7 +87,8 @@ __all__ = [
 class StreamingProcessor:
     """Processes mkdocs output incrementally for streaming mode."""
 
-    BUFFER_MAX_SIZE = 200  # Keep last N lines for context
+    BUFFER_MAX_SIZE: int = 200  # Keep last N lines for context
+    RAW_BUFFER_MAX_SIZE: int = 500  # Keep last N lines for state file
 
     def __init__(
         self,
@@ -84,13 +96,16 @@ class StreamingProcessor:
         verbose: bool = False,
         errors_only: bool = False,
         on_issue: Callable[[Issue], None] | None = None,
+        write_state: bool = False,
     ):
         self.console = console
         self.verbose = verbose
         self.errors_only = errors_only
         self.on_issue = on_issue or (lambda issue: print_issue(console, issue, verbose))
+        self.write_state = write_state
 
         self.buffer: list[str] = []
+        self.raw_buffer: list[str] = []  # All lines for state file
         self.all_issues: list[Issue] = []
         self.seen_issues: set[tuple[Level, str]] = set()
         self.build_info = BuildInfo()
@@ -101,10 +116,13 @@ class StreamingProcessor:
         """Process a single line of mkdocs output."""
         line = line.rstrip()
         self.buffer.append(line)
+        self.raw_buffer.append(line)
 
-        # Keep buffer from growing too large
+        # Keep buffers from growing too large
         if len(self.buffer) > self.BUFFER_MAX_SIZE:
             self.buffer = self.buffer[-self.BUFFER_MAX_SIZE :]
+        if len(self.raw_buffer) > self.RAW_BUFFER_MAX_SIZE:
+            self.raw_buffer = self.raw_buffer[-self.RAW_BUFFER_MAX_SIZE :]
 
         # Detect chunk boundaries
         boundary = detect_chunk_boundary(line, self.prev_line)
@@ -119,6 +137,7 @@ class StreamingProcessor:
         if boundary in (ChunkBoundary.BUILD_COMPLETE, ChunkBoundary.SERVER_STARTED):
             self._process_buffer()
             self._update_build_info_from_line(line)
+            self._write_state_file()
             return
 
         # Check if we just completed an error block
@@ -136,9 +155,22 @@ class StreamingProcessor:
         self.console.print()
         # Clear state for new build
         self.buffer.clear()
+        self.raw_buffer.clear()
         self.all_issues.clear()
         self.seen_issues.clear()
         self.build_info = BuildInfo()
+
+    def _write_state_file(self) -> None:
+        """Write current state to the state file for MCP server access."""
+        if not self.write_state:
+            return
+
+        state = StateFileData(
+            issues=self.all_issues,
+            build_info=self.build_info,
+            raw_output=self.raw_buffer,
+        )
+        write_state_file(state)
 
     def _process_buffer(self) -> None:
         """Process accumulated buffer and display any new issues."""
@@ -397,10 +429,14 @@ def run_streaming_mode(console: Console, args: argparse.Namespace) -> int:
     from rich.live import Live
     from rich.spinner import Spinner
 
+    # Check if state sharing is enabled
+    write_state = getattr(args, "share_state", False)
+
     processor = StreamingProcessor(
         console=console,
         verbose=args.verbose,
         errors_only=args.errors_only,
+        write_state=write_state,
     )
 
     # Track if we've printed any issues to know if we need a newline
@@ -700,6 +736,11 @@ Note: Use --verbose with mkdocs to get file paths for code block errors.
         "--interactive",
         action="store_true",
         help="Interactive mode: toggle between filtered/raw with keyboard (r=raw, f=filtered, q=quit)",
+    )
+    parser.add_argument(
+        "--share-state",
+        action="store_true",
+        help="Write state to .mkdocs-output-filter/state.json for MCP server access",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     args = parser.parse_args()

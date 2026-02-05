@@ -1,6 +1,6 @@
 # MCP Server
 
-mkdocs-filter includes an MCP (Model Context Protocol) server that allows AI code assistants like Claude Code to programmatically access mkdocs build issues.
+mkdocs-output-filter includes an MCP (Model Context Protocol) server that allows AI code assistants like Claude Code to programmatically access mkdocs build issues.
 
 ## Overview
 
@@ -9,53 +9,63 @@ The MCP server provides tools for:
 - **`get_issues`** - Get current warnings and errors from the last build
 - **`get_issue_details`** - Get detailed information about a specific issue
 - **`rebuild`** - Trigger a new mkdocs build and get updated issues
+- **`get_build_info`** - Get server URL, build directory, and timing
+- **`get_raw_output`** - Get raw mkdocs output for debugging
 
 ## Setup
 
-### With Claude Code
+### Watch Mode (Recommended)
 
-Add to your `~/.claude.json`:
+Watch mode connects to a running `mkdocs-output-filter` CLI, allowing the MCP server to see real-time build issues as you develop.
+
+**Step 1:** Run mkdocs with the filter and state sharing enabled:
+
+```bash
+mkdocs serve 2>&1 | mkdocs-output-filter --share-state
+```
+
+**Step 2:** Configure Claude Code to use the MCP server. Add to `.claude/settings.local.json` in your project:
 
 ```json
 {
   "mcpServers": {
-    "mkdocs-filter": {
-      "command": "mkdocs-filter-mcp",
-      "args": ["--project-dir", "/path/to/your/mkdocs/project"]
+    "mkdocs-output-filter": {
+      "command": "mkdocs-output-filter",
+      "args": ["mcp", "--watch"]
     }
   }
 }
 ```
 
-Or for a specific project, add to `.claude/settings.local.json` in the project root:
+The server auto-detects the project from Claude Code's working directory - no need to specify a path!
+
+### Subprocess Mode
+
+For one-off builds where you don't have mkdocs running, the MCP server can run mkdocs itself:
+
+```bash
+mkdocs-output-filter mcp --project-dir /path/to/project
+```
+
+Or add to Claude Code config:
 
 ```json
 {
   "mcpServers": {
-    "mkdocs-filter": {
-      "command": "mkdocs-filter-mcp",
-      "args": ["--project-dir", "."]
+    "mkdocs-output-filter": {
+      "command": "mkdocs-output-filter",
+      "args": ["mcp", "--project-dir", "."]
     }
   }
 }
 ```
 
-### Modes
+### Pipe Mode
 
-#### Subprocess Mode (Recommended)
-
-The MCP server manages mkdocs internally:
+For advanced use cases, receive mkdocs output via stdin:
 
 ```bash
-mkdocs-filter-mcp --project-dir /path/to/project
-```
-
-#### Pipe Mode
-
-Receive mkdocs output via stdin (for advanced use cases):
-
-```bash
-mkdocs build 2>&1 | mkdocs-filter-mcp --pipe
+mkdocs build 2>&1 | mkdocs-output-filter mcp --pipe
 ```
 
 ## Tools
@@ -69,28 +79,30 @@ Get current warnings and errors.
 | Name | Type | Description |
 |------|------|-------------|
 | `filter` | `string` | Filter issues: `"all"`, `"errors"`, or `"warnings"` |
-| `verbose` | `boolean` | Include full tracebacks |
+| `verbose` | `boolean` | Include full code blocks and tracebacks |
 
-**Returns:** JSON array of issues
+**Returns:** JSON with issue count and array
 
 ```json
-[
-  {
-    "id": "issue-abc123",
-    "level": "WARNING",
-    "source": "markdown_exec",
-    "message": "ValueError: test error",
-    "file": "docs/index.md",
-    "session": "test",
-    "line": 42,
-    "code": "raise ValueError('test')"
-  }
-]
+{
+  "total": 2,
+  "errors": 0,
+  "warnings": 2,
+  "issues": [
+    {
+      "id": "issue-abc123",
+      "level": "WARNING",
+      "source": "markdown_exec",
+      "message": "ValueError: test error",
+      "file": "docs/index.md → session 'test' → line 8"
+    }
+  ]
+}
 ```
 
 ### `get_issue_details`
 
-Get detailed information about a specific issue.
+Get detailed information about a specific issue including code and traceback.
 
 **Parameters:**
 
@@ -98,11 +110,11 @@ Get detailed information about a specific issue.
 |------|------|-------------|
 | `issue_id` | `string` | The issue ID from `get_issues` |
 
-**Returns:** Full issue object with traceback
+**Returns:** Full issue object with code and traceback
 
 ### `rebuild`
 
-Trigger a new mkdocs build.
+Trigger a new mkdocs build (subprocess mode) or refresh from state file (watch mode).
 
 **Parameters:**
 
@@ -114,30 +126,47 @@ Trigger a new mkdocs build.
 
 ```json
 {
-  "issues": [...],
-  "build_info": {
-    "build_dir": "/path/to/site",
-    "build_time": "1.23",
-    "success": true
-  }
+  "success": true,
+  "return_code": 0,
+  "total_issues": 1,
+  "errors": 0,
+  "warnings": 1,
+  "build_time": "1.23",
+  "issues": [...]
 }
 ```
 
-## Use Cases
+### `get_build_info`
 
-### Automated Error Fixing
+Get information about the last build.
+
+**Returns:**
+
+```json
+{
+  "server_url": "http://127.0.0.1:8000/",
+  "build_dir": "/path/to/site",
+  "build_time": "1.23"
+}
+```
+
+### `get_raw_output`
+
+Get the raw mkdocs output from the last build.
+
+**Parameters:**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `last_n_lines` | `integer` | Number of lines to return (default: 100) |
+
+## Workflow Example
 
 When working on documentation, AI assistants can:
 
-1. Call `rebuild` to build the docs
-2. Call `get_issues` to check for errors
-3. Read the relevant file and fix the issue
-4. Call `rebuild` again to verify the fix
+1. Call `get_issues` to check for current errors
+2. Read the relevant file and fix the issue
+3. Save the file to trigger a rebuild (in watch mode)
+4. Call `get_issues` again to verify the fix
 
-### CI Integration
-
-Use the MCP server in automated workflows to:
-
-- Get structured issue data (JSON) instead of parsing text
-- Track issues across builds
-- Generate reports with issue details
+With watch mode, changes are detected automatically - no need to manually call `rebuild`!

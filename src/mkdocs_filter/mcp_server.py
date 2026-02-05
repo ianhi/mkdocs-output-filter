@@ -3,7 +3,10 @@
 Provides tools for code agents to get mkdocs issues and collaborate on fixes.
 
 Usage:
-    # Subprocess mode (recommended): Server manages mkdocs internally
+    # Watch mode (recommended): Read state from running mkdocs-output-filter CLI
+    mkdocs-output-filter mcp --watch
+
+    # Subprocess mode: Server manages mkdocs internally
     mkdocs-output-filter mcp --project-dir /path/to/project
 
     # Pipe mode: Receive mkdocs output via stdin
@@ -30,6 +33,7 @@ from mkdocs_filter.parsing import (
     Level,
     extract_build_info,
     parse_mkdocs_output,
+    read_state_file,
 )
 
 
@@ -43,19 +47,23 @@ class MkdocsFilterServer:
         self,
         project_dir: Path | None = None,
         pipe_mode: bool = False,
+        watch_mode: bool = False,
     ):
         """Initialize the server.
 
         Args:
             project_dir: Path to mkdocs project directory (for subprocess mode)
             pipe_mode: If True, expect mkdocs output from stdin
+            watch_mode: If True, read state from state file written by CLI
         """
         self.project_dir = project_dir
         self.pipe_mode = pipe_mode
+        self.watch_mode = watch_mode
         self.issues: list[Issue] = []
         self.build_info = BuildInfo()
         self.raw_output: list[str] = []
         self._issue_ids: dict[str, str] = {}  # Cache for stable issue IDs
+        self._last_state_timestamp: float = 0
 
         # Create MCP server
         self._server = Server("mkdocs-filter")
@@ -161,8 +169,34 @@ class MkdocsFilterServer:
             return self._handle_get_raw_output(arguments)
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
+    def _refresh_from_state_file(self) -> bool:
+        """Refresh issues from state file if in watch mode.
+
+        Returns True if state was refreshed, False otherwise.
+        """
+        if not self.watch_mode:
+            return False
+
+        state = read_state_file(self.project_dir)
+        if state is None:
+            return False
+
+        # Check if state has been updated since last read
+        if state.timestamp <= self._last_state_timestamp:
+            return False
+
+        # Update our state from the file
+        self._last_state_timestamp = state.timestamp
+        self.issues = state.issues
+        self.build_info = state.build_info
+        self.raw_output = state.raw_output
+        return True
+
     def _handle_get_issues(self, arguments: dict[str, Any]) -> list[TextContent]:
         """Handle get_issues tool call."""
+        # Refresh from state file if in watch mode
+        self._refresh_from_state_file()
+
         filter_type = arguments.get("filter", "all")
         verbose = arguments.get("verbose", False)
 
@@ -192,6 +226,9 @@ class MkdocsFilterServer:
 
     def _handle_get_issue_details(self, arguments: dict[str, Any]) -> list[TextContent]:
         """Handle get_issue_details tool call."""
+        # Refresh from state file if in watch mode
+        self._refresh_from_state_file()
+
         issue_id = arguments.get("issue_id", "")
 
         # Find issue by ID
@@ -211,6 +248,21 @@ class MkdocsFilterServer:
                     text="Error: Cannot rebuild in pipe mode. Run mkdocs manually and pipe output.",
                 )
             ]
+
+        if self.watch_mode:
+            # In watch mode, just refresh from state file
+            # The user should save a file to trigger a rebuild in mkdocs serve
+            refreshed = self._refresh_from_state_file()
+            if not refreshed:
+                return [
+                    TextContent(
+                        type="text",
+                        text="No new build data. Save a file to trigger a rebuild in mkdocs serve, "
+                        "or check that mkdocs-output-filter is running with --share-state.",
+                    )
+                ]
+            # Return current issues
+            return self._handle_get_issues(arguments)
 
         if not self.project_dir:
             return [TextContent(type="text", text="Error: No project directory configured")]
@@ -241,6 +293,8 @@ class MkdocsFilterServer:
 
     def _handle_get_build_info(self) -> list[TextContent]:
         """Handle get_build_info tool call."""
+        # Refresh from state file if in watch mode
+        self._refresh_from_state_file()
         return [TextContent(type="text", text=self._get_build_info_json())]
 
     def _handle_get_raw_output(self, arguments: dict[str, Any]) -> list[TextContent]:
@@ -353,7 +407,13 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Subprocess mode (recommended)
+    # Watch mode (recommended) - auto-detects project from current directory
+    # First, run mkdocs-output-filter with --share-state in a terminal:
+    #   mkdocs serve 2>&1 | mkdocs-output-filter --share-state
+    # Then start the MCP server in watch mode:
+    mkdocs-output-filter mcp --watch
+
+    # Subprocess mode (for one-off builds)
     mkdocs-output-filter mcp --project-dir /path/to/mkdocs/project
 
     # Pipe mode
@@ -364,20 +424,29 @@ Usage with Claude Code:
     {
         "mkdocs-output-filter": {
             "command": "mkdocs-output-filter",
-            "args": ["mcp", "--project-dir", "/path/to/project"]
+            "args": ["mcp", "--watch"]
         }
     }
+
+    The server auto-detects the project from Claude Code's working directory.
+    Just run 'mkdocs serve 2>&1 | mkdocs-output-filter --share-state' in your
+    project and Claude Code will see the build issues.
         """,
     )
     parser.add_argument(
         "--project-dir",
         type=str,
-        help="Path to mkdocs project directory (for subprocess mode)",
+        help="Path to mkdocs project directory (for subprocess mode or watch mode)",
     )
     parser.add_argument(
         "--pipe",
         action="store_true",
         help="Read mkdocs output from stdin (pipe mode)",
+    )
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="Watch mode: read state from .mkdocs-output-filter/state.json written by CLI",
     )
     parser.add_argument(
         "--initial-build",
@@ -387,15 +456,22 @@ Usage with Claude Code:
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.project_dir and not args.pipe:
-        print("Error: Either --project-dir or --pipe must be specified", file=sys.stderr)
+    mode_count = sum([bool(args.project_dir and not args.watch), args.pipe, args.watch])
+    if mode_count == 0:
+        print(
+            "Error: Specify one of --watch, --project-dir, or --pipe",
+            file=sys.stderr,
+        )
         return 1
 
-    if args.project_dir and args.pipe:
-        print("Error: Cannot use both --project-dir and --pipe", file=sys.stderr)
+    if mode_count > 1 and not (args.watch and args.project_dir):
+        print(
+            "Error: Cannot combine --pipe with other modes",
+            file=sys.stderr,
+        )
         return 1
 
-    # Validate project directory
+    # Validate project directory if specified
     project_path = None
     if args.project_dir:
         project_path = Path(args.project_dir)
@@ -410,6 +486,7 @@ Usage with Claude Code:
     server = MkdocsFilterServer(
         project_dir=project_path,
         pipe_mode=args.pipe,
+        watch_mode=args.watch,
     )
 
     # Handle pipe mode - read initial input
@@ -419,7 +496,11 @@ Usage with Claude Code:
             lines.append(line.rstrip())
         server._parse_output("\n".join(lines))
 
-    # Handle initial build
+    # Handle watch mode - do initial read of state file
+    elif args.watch:
+        server._refresh_from_state_file()
+
+    # Handle initial build for subprocess mode
     elif args.initial_build and project_path:
         lines, _ = server._run_mkdocs_build()
         server._parse_output("\n".join(lines))

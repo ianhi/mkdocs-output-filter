@@ -5,9 +5,14 @@ This module contains all parsing logic used by both the CLI and MCP server.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
 
 class Level(Enum):
@@ -304,3 +309,182 @@ def dedent_code(code: str) -> str:
             line[int(min_indent) :] if len(line) > min_indent else line for line in lines
         )
     return code
+
+
+# State file location: .mkdocs-output-filter/state.json in project root
+STATE_DIR_NAME = ".mkdocs-output-filter"
+STATE_FILE_NAME = "state.json"
+
+
+def find_project_root() -> Path | None:
+    """Find the mkdocs project root by looking for mkdocs.yml."""
+    cwd = Path.cwd()
+
+    # Check current directory and parents
+    for path in [cwd, *cwd.parents]:
+        if (path / "mkdocs.yml").exists():
+            return path
+        # Stop at home directory or root
+        if path == Path.home() or path == path.parent:
+            break
+
+    return None
+
+
+def get_state_file_path(project_dir: Path | None = None) -> Path | None:
+    """Get the path to the state file for a project."""
+    if project_dir is None:
+        project_dir = find_project_root()
+
+    if project_dir is None:
+        return None
+
+    return project_dir / STATE_DIR_NAME / STATE_FILE_NAME
+
+
+def issue_to_dict(issue: Issue) -> dict[str, Any]:
+    """Convert an Issue to a JSON-serializable dict."""
+    result: dict[str, Any] = {
+        "level": issue.level.value,
+        "source": issue.source,
+        "message": issue.message,
+    }
+    if issue.file:
+        result["file"] = issue.file
+    if issue.code:
+        result["code"] = issue.code
+    if issue.output:
+        result["output"] = issue.output
+    return result
+
+
+def issue_from_dict(data: dict[str, Any]) -> Issue:
+    """Create an Issue from a dict."""
+    return Issue(
+        level=Level(data["level"]),
+        source=data["source"],
+        message=data["message"],
+        file=data.get("file"),
+        code=data.get("code"),
+        output=data.get("output"),
+    )
+
+
+def build_info_to_dict(info: BuildInfo) -> dict[str, Any]:
+    """Convert BuildInfo to a JSON-serializable dict."""
+    result: dict[str, Any] = {}
+    if info.server_url:
+        result["server_url"] = info.server_url
+    if info.build_dir:
+        result["build_dir"] = info.build_dir
+    if info.build_time:
+        result["build_time"] = info.build_time
+    return result
+
+
+def build_info_from_dict(data: dict[str, Any]) -> BuildInfo:
+    """Create BuildInfo from a dict."""
+    return BuildInfo(
+        server_url=data.get("server_url"),
+        build_dir=data.get("build_dir"),
+        build_time=data.get("build_time"),
+    )
+
+
+@dataclass
+class StateFileData:
+    """Data stored in the state file for sharing between CLI and MCP server."""
+
+    issues: list[Issue] = field(default_factory=list)
+    build_info: BuildInfo = field(default_factory=BuildInfo)
+    raw_output: list[str] = field(default_factory=list)
+    timestamp: float = field(default_factory=time.time)
+    project_dir: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to JSON-serializable dict."""
+        return {
+            "issues": [issue_to_dict(i) for i in self.issues],
+            "build_info": build_info_to_dict(self.build_info),
+            "raw_output": self.raw_output[-500:],  # Keep last 500 lines
+            "timestamp": self.timestamp,
+            "project_dir": self.project_dir,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StateFileData:
+        """Create from a dict."""
+        return cls(
+            issues=[issue_from_dict(i) for i in data.get("issues", [])],
+            build_info=build_info_from_dict(data.get("build_info", {})),
+            raw_output=data.get("raw_output", []),
+            timestamp=data.get("timestamp", 0),
+            project_dir=data.get("project_dir"),
+        )
+
+
+def write_state_file(
+    state: StateFileData,
+    project_dir: Path | None = None,
+) -> Path | None:
+    """Write state to the state file.
+
+    Returns the path to the state file, or None if it couldn't be written.
+    """
+    state_path = get_state_file_path(project_dir)
+    if state_path is None:
+        return None
+
+    # Ensure directory exists
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Update project_dir in state
+    if project_dir:
+        state.project_dir = str(project_dir)
+    elif state.project_dir is None:
+        root = find_project_root()
+        if root:
+            state.project_dir = str(root)
+
+    # Write atomically (write to temp, then rename)
+    temp_path = state_path.with_suffix(".tmp")
+    try:
+        with open(temp_path, "w") as f:
+            json.dump(state.to_dict(), f, indent=2)
+        os.replace(temp_path, state_path)
+        return state_path
+    except OSError:
+        # Clean up temp file if it exists
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        return None
+
+
+def read_state_file(project_dir: Path | None = None) -> StateFileData | None:
+    """Read state from the state file.
+
+    Returns the state data, or None if the file doesn't exist or can't be read.
+    """
+    state_path = get_state_file_path(project_dir)
+    if state_path is None or not state_path.exists():
+        return None
+
+    try:
+        with open(state_path) as f:
+            data = json.load(f)
+        return StateFileData.from_dict(data)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def get_state_file_age(project_dir: Path | None = None) -> float | None:
+    """Get the age of the state file in seconds.
+
+    Returns None if the file doesn't exist.
+    """
+    state = read_state_file(project_dir)
+    if state is None:
+        return None
+    return time.time() - state.timestamp
