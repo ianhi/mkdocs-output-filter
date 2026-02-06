@@ -5,14 +5,17 @@
 Works with **MkDocs** and **Sphinx** (including sphinx-autobuild, Jupyter Book, myst-nb).
 
 ```bash
-pip install docs-output-filter
-docs-output-filter -- mkdocs serve --livereload
+uvx docs-output-filter -- mkdocs serve --livereload  # no install needed
+uv tool install docs-output-filter                    # or install permanently
 ```
 
 For AI code assistants ([details](mcp-server.md)):
 
 ```bash
+# if installed with uv tool install
 claude mcp add --scope user --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
+# if using uvx
+claude mcp add --scope user --transport stdio docs-output-filter -- uvx docs-output-filter --mcp --watch
 ```
 
 Extracts warnings, errors, and code execution failures with rich formatting. Hides routine build noise.

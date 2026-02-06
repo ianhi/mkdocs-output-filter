@@ -156,8 +156,10 @@ Enable AI code assistants to access build issues:
 # Terminal 1: Run build tool with state sharing
 docs-output-filter --share-state -- mkdocs serve --livereload
 
-# Terminal 2: Add MCP server to Claude Code
+# Terminal 2: Add MCP server to Claude Code (if installed)
 claude mcp add --scope user --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
+# Or with uvx (no install needed)
+claude mcp add --scope user --transport stdio docs-output-filter -- uvx docs-output-filter --mcp --watch
 ```
 
 ## Documentation

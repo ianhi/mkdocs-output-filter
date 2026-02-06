@@ -33,11 +33,11 @@ docs-output-filter --share-state -- sphinx-autobuild docs _build/html
 **Step 2:** Configure Claude Code to use the MCP server:
 
 ```bash
-# Add for all projects (user scope)
+# If installed with uv tool install
 claude mcp add --scope user --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
 
-# Or add for just this project (local scope)
-claude mcp add --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
+# If using uvx (no install needed)
+claude mcp add --scope user --transport stdio docs-output-filter -- uvx docs-output-filter --mcp --watch
 ```
 
 The server auto-detects the project from Claude Code's working directory - no need to specify a path!
