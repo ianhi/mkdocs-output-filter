@@ -1,6 +1,6 @@
 # MCP Server
 
-mkdocs-output-filter includes an MCP (Model Context Protocol) server that allows AI code assistants like Claude Code to programmatically access mkdocs build issues.
+docs-output-filter includes an MCP (Model Context Protocol) server that allows AI code assistants like Claude Code to programmatically access documentation build issues.
 
 ## Overview
 
@@ -8,22 +8,26 @@ The MCP server provides tools for:
 
 - **`get_issues`** - Get current warnings and errors from the last build
 - **`get_issue_details`** - Get detailed information about a specific issue
-- **`get_info`** - Get INFO-level messages (broken links, missing nav entries, etc.)
-- **`rebuild`** - Trigger a new mkdocs build and get updated issues
+- **`get_info`** - Get INFO-level messages (broken links, missing nav entries, deprecation warnings, etc.)
+- **`rebuild`** - Trigger a new build and get updated issues
 - **`get_build_info`** - Get server URL, build directory, and timing
-- **`get_raw_output`** - Get raw mkdocs output for debugging
+- **`get_raw_output`** - Get raw build output for debugging
 - **`fetch_build_log`** - Fetch and process a remote build log (e.g., ReadTheDocs)
 
 ## Setup
 
 ### Watch Mode (Recommended)
 
-Watch mode connects to a running `mkdocs-output-filter` CLI, allowing the MCP server to see real-time build issues as you develop.
+Watch mode connects to a running `docs-output-filter` CLI, allowing the MCP server to see real-time build issues as you develop.
 
-**Step 1:** Run mkdocs with the filter and state sharing enabled:
+**Step 1:** Run your build tool with the filter and state sharing enabled:
 
 ```bash
-mkdocs serve 2>&1 | mkdocs-output-filter --share-state
+# MkDocs
+docs-output-filter --share-state -- mkdocs serve --livereload
+
+# Sphinx
+docs-output-filter --share-state -- sphinx-autobuild docs _build/html
 ```
 
 **Step 2:** Configure Claude Code to use the MCP server. Add to `.claude/settings.local.json` in your project:
@@ -31,9 +35,9 @@ mkdocs serve 2>&1 | mkdocs-output-filter --share-state
 ```json
 {
   "mcpServers": {
-    "mkdocs-output-filter": {
-      "command": "mkdocs-output-filter",
-      "args": ["mcp", "--watch"]
+    "docs-output-filter": {
+      "command": "docs-output-filter",
+      "args": ["--mcp", "--watch"]
     }
   }
 }
@@ -43,10 +47,10 @@ The server auto-detects the project from Claude Code's working directory - no ne
 
 ### Subprocess Mode
 
-For one-off builds where you don't have mkdocs running, the MCP server can run mkdocs itself:
+For one-off builds where you don't have a build tool running, the MCP server can run it itself. It auto-detects the project type from `mkdocs.yml` or `conf.py`:
 
 ```bash
-mkdocs-output-filter mcp --project-dir /path/to/project
+docs-output-filter --mcp --project-dir /path/to/project
 ```
 
 Or add to Claude Code config:
@@ -54,9 +58,9 @@ Or add to Claude Code config:
 ```json
 {
   "mcpServers": {
-    "mkdocs-output-filter": {
-      "command": "mkdocs-output-filter",
-      "args": ["mcp", "--project-dir", "."]
+    "docs-output-filter": {
+      "command": "docs-output-filter",
+      "args": ["--mcp", "--project-dir", "."]
     }
   }
 }
@@ -64,10 +68,11 @@ Or add to Claude Code config:
 
 ### Pipe Mode
 
-For advanced use cases, receive mkdocs output via stdin:
+For advanced use cases, receive build output via stdin:
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter mcp --pipe
+mkdocs build 2>&1 | docs-output-filter --mcp --pipe
+sphinx-build docs _build 2>&1 | docs-output-filter --mcp --pipe
 ```
 
 ## Tools
@@ -116,13 +121,13 @@ Get detailed information about a specific issue including code and traceback.
 
 ### `rebuild`
 
-Trigger a new mkdocs build (subprocess mode) or refresh from state file (watch mode).
+Trigger a new build (subprocess mode) or refresh from state file (watch mode).
 
 **Parameters:**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `verbose` | `boolean` | Run mkdocs with verbose flag |
+| `verbose` | `boolean` | Run build tool with verbose flag |
 
 **Returns:** Updated issues list and build info
 
@@ -154,7 +159,7 @@ Get information about the last build.
 
 ### `get_raw_output`
 
-Get the raw mkdocs output from the last build.
+Get the raw build output from the last build.
 
 **Parameters:**
 
@@ -164,13 +169,13 @@ Get the raw mkdocs output from the last build.
 
 ### `get_info`
 
-Get INFO-level messages like broken links, missing nav entries, and absolute links.
+Get INFO-level messages like broken links, missing nav entries, and deprecation warnings.
 
 **Parameters:**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `category` | `string` | Filter by category: `"all"`, `"broken_link"`, `"absolute_link"`, `"unrecognized_link"`, `"missing_nav"`, `"no_git_logs"` |
+| `category` | `string` | Filter by category: `"all"`, `"broken_link"`, `"absolute_link"`, `"unrecognized_link"`, `"missing_nav"`, `"no_git_logs"`, `"deprecation_warning"` |
 | `grouped` | `boolean` | Group messages by category (default: true) |
 
 **Returns:**
@@ -181,8 +186,8 @@ Get INFO-level messages like broken links, missing nav entries, and absolute lin
     "broken_link": [
       {"file": "docs/guide.md", "target": "missing.md", "suggestion": null}
     ],
-    "missing_nav": [
-      {"file": "docs/hidden.md", "target": null, "suggestion": null}
+    "deprecation_warning": [
+      {"file": "sphinx_rtd_theme", "target": "RemovedInSphinx80Warning", "suggestion": "The deprecated 'app' argument is removed in Sphinx 8"}
     ]
   },
   "count": 2

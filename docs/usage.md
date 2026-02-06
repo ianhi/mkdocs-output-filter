@@ -2,59 +2,124 @@
 
 ## Basic Usage
 
-Pipe mkdocs output through the filter:
+The recommended way to use docs-output-filter is **wrapper mode** — prefix your build command with `docs-output-filter --`:
 
 ```bash
-# Build with filtered output
-mkdocs build 2>&1 | mkdocs-output-filter
+# MkDocs
+docs-output-filter -- mkdocs build
+docs-output-filter -- mkdocs serve --livereload
 
-# Serve with filtered output (streaming mode auto-detected)
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter
+# Sphinx / sphinx-autobuild
+docs-output-filter -- sphinx-build docs _build
+docs-output-filter -- sphinx-autobuild docs _build/html
 ```
+
+!!! tip "Why wrapper mode?"
+    Wrapper mode runs the command for you, automatically captures both stdout and stderr, and fixes Python buffering issues that can prevent sphinx-autobuild's server URL from appearing. No `2>&1` needed.
+
+You can also use traditional **pipe mode**:
+
+```bash
+mkdocs build 2>&1 | docs-output-filter
+sphinx-build docs _build 2>&1 | docs-output-filter
+```
+
+!!! note "Why `2>&1` in pipe mode?"
+    Sphinx writes warnings and errors to **stderr**. Without `2>&1`, they bypass the filter
+    entirely and print directly to your terminal. MkDocs writes everything to stdout, so
+    `2>&1` is optional but harmless — we recommend always including it. Wrapper mode handles
+    this automatically.
 
 !!! warning "Click 8.3.x Bug"
     Due to a [bug in Click 8.3.x](https://github.com/mkdocs/mkdocs/issues/4032),
     you must use `--livereload` flag for file watching to work properly with
     `mkdocs serve`.
 
+## Build Tool Detection
+
+docs-output-filter auto-detects whether you're running MkDocs or Sphinx from the output. You can force a specific tool:
+
+```bash
+# Auto-detect (default)
+docs-output-filter -- sphinx-build docs _build
+
+# Force Sphinx
+docs-output-filter --tool sphinx -- some-command
+
+# Force MkDocs
+docs-output-filter --tool mkdocs -- some-command
+```
+
 ## Command-Line Options
 
 | Flag | Description |
 |------|-------------|
+| `-- COMMAND` | Run command as subprocess (recommended, no `2>&1` needed) |
 | `-v, --verbose` | Show full code blocks and tracebacks |
 | `-e, --errors-only` | Show only errors, not warnings |
 | `--no-color` | Disable colored output |
 | `--no-progress` | Disable progress spinner |
-| `--raw` | Pass through raw mkdocs output |
-| `--streaming` | Force streaming mode (for `mkdocs serve`) |
+| `--raw` | Pass through raw build output |
+| `--streaming` | Force streaming mode (for `mkdocs serve` / `sphinx-autobuild`) |
 | `--batch` | Force batch mode (process all input then display) |
 | `-i, --interactive` | Interactive mode with keyboard controls |
+| `--tool mkdocs\|sphinx\|auto` | Force build tool detection (default: auto) |
 | `--share-state` | Write issues to state file for MCP server |
 | `--url URL` | Fetch and process a remote build log (e.g., ReadTheDocs) |
 | `--version` | Show version number |
 
 ## Modes
 
-### Batch Mode (default for `mkdocs build`)
+### Wrapper Mode (recommended)
 
-Reads all mkdocs output, parses it, then displays a summary. Shows a progress spinner while processing.
+Runs your build command as a subprocess, automatically capturing both stdout and stderr. Sets `PYTHONUNBUFFERED=1` to fix Python buffering issues (e.g., sphinx-autobuild's server URL not appearing in pipe mode).
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter
+docs-output-filter -- mkdocs build
+docs-output-filter -- mkdocs serve --livereload
+docs-output-filter -- sphinx-autobuild docs _build/html
 ```
 
-### Streaming Mode (default for `mkdocs serve`)
-
-Processes output in real-time, detecting chunk boundaries like build completion and file changes. Shows issues as they occur.
+Place docs-output-filter flags **before** the `--`:
 
 ```bash
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter --streaming
+docs-output-filter -v -- mkdocs build --verbose
+docs-output-filter -e --no-color -- sphinx-build docs _build
+```
+
+The `--` is standard Unix convention meaning "end of options" — everything after it is the command to run.
+
+### Batch Mode (default for one-shot builds)
+
+Reads all build output, parses it, then displays a summary. Shows a progress spinner while processing. This is the default when piping one-shot build commands.
+
+```bash
+mkdocs build 2>&1 | docs-output-filter
+sphinx-build docs _build 2>&1 | docs-output-filter
+```
+
+### Streaming Mode (default for serve/watch commands)
+
+Processes output in real-time, detecting chunk boundaries like build completion and file changes. Shows issues as they occur. This is the default mode (use `--batch` to force batch mode).
+
+```bash
+docs-output-filter -- mkdocs serve --livereload
+docs-output-filter -- sphinx-autobuild docs _build/html
+```
+
+Or with pipe mode:
+
+```bash
+mkdocs serve --livereload 2>&1 | docs-output-filter
+sphinx-autobuild docs _build/html 2>&1 | docs-output-filter
 ```
 
 When a file change triggers a rebuild, you'll see:
 
 ```
-─── File change detected, rebuilding... ───
+═══════════════════════════════════════════════
+🔄 File change detected — rebuilding...
+═══════════════════════════════════════════════
 ```
 
 ### Interactive Mode
@@ -62,7 +127,7 @@ When a file change triggers a rebuild, you'll see:
 Toggle between filtered and raw output using keyboard controls:
 
 ```bash
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter -i
+docs-output-filter -i -- mkdocs serve --livereload
 ```
 
 **Keyboard controls:**
@@ -81,7 +146,8 @@ mkdocs serve --livereload 2>&1 | mkdocs-output-filter -i
 Show full tracebacks for debugging:
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter -v
+docs-output-filter -v -- mkdocs build
+docs-output-filter -v -- sphinx-build docs _build
 ```
 
 ### Errors Only
@@ -89,7 +155,7 @@ mkdocs build 2>&1 | mkdocs-output-filter -v
 Hide warnings, show only errors:
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter -e
+docs-output-filter -e -- mkdocs build
 ```
 
 ### CI/CD Integration
@@ -97,7 +163,8 @@ mkdocs build 2>&1 | mkdocs-output-filter -e
 For CI environments, disable colors and progress:
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter --no-color --no-progress
+docs-output-filter --no-color --no-progress -- mkdocs build
+docs-output-filter --no-color --no-progress -- sphinx-build docs _build
 ```
 
 The exit code is:
@@ -106,10 +173,10 @@ The exit code is:
 
 ### Raw Passthrough
 
-Sometimes you need the full mkdocs output:
+Sometimes you need the full build output:
 
 ```bash
-mkdocs build 2>&1 | mkdocs-output-filter --raw
+docs-output-filter --raw -- mkdocs build
 ```
 
 ### Remote Build Logs
@@ -118,10 +185,10 @@ Fetch and process build logs from remote CI/CD systems like ReadTheDocs:
 
 ```bash
 # ReadTheDocs - just paste the build URL from your browser
-mkdocs-output-filter --url https://app.readthedocs.org/projects/myproject/builds/12345/
+docs-output-filter --url https://app.readthedocs.org/projects/myproject/builds/12345/
 
 # Any text log file
-mkdocs-output-filter --url https://example.com/build.log
+docs-output-filter --url https://example.com/build.log
 ```
 
 This is useful for debugging failed builds on CI services without copying logs manually.
@@ -137,7 +204,7 @@ This is useful for debugging failed builds on CI services without copying logs m
 Enable state sharing so Claude Code (or other AI assistants) can access build issues:
 
 ```bash
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter --share-state
+docs-output-filter --share-state -- mkdocs serve --livereload
 ```
 
-This writes issues to `.mkdocs-output-filter/state.json` in your project, which the [MCP server](mcp-server.md) can read. See the [MCP Server docs](mcp-server.md) for setup instructions.
+This writes a state file (in a temp directory) that the [MCP server](mcp-server.md) can read. No files are created in your project directory. See the [MCP Server docs](mcp-server.md) for setup instructions.

@@ -1,14 +1,14 @@
-# mkdocs-output-filter
+# docs-output-filter
 
-**Filter mkdocs output to show only what matters: warnings and errors.**
+**Filter documentation build output to show only what matters: warnings and errors.**
 
-Includes an MCP server for AI code assistant integration (Claude Code, etc.).
+Works with **MkDocs** and **Sphinx** (including sphinx-autobuild, Jupyter Book, myst-nb). Includes an MCP server for AI code assistant integration (Claude Code, etc.).
 
 ## Before & After
 
 <table>
 <tr>
-<th>❌ Raw mkdocs output (43 lines)</th>
+<th>❌ Raw build output (43 lines)</th>
 <th>✅ Filtered output (15 lines)</th>
 </tr>
 <tr>
@@ -90,24 +90,31 @@ Built in 12.34s
 
 ```bash
 # With uv (recommended)
-uv tool install mkdocs-output-filter
+uv tool install docs-output-filter
 
 # With pip
-pip install mkdocs-output-filter
+pip install docs-output-filter
 ```
 
 ## Usage
 
 ```bash
-# Filter build output
-mkdocs build 2>&1 | mkdocs-output-filter
+# Wrapper mode (recommended) — just prefix your build command
+docs-output-filter -- mkdocs build
+docs-output-filter -- mkdocs serve --livereload
+docs-output-filter -- sphinx-autobuild docs _build/html
 
-# Filter serve output (streaming mode, updates on file changes)
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter
+# Pipe mode — traditional Unix pipe
+mkdocs build 2>&1 | docs-output-filter
+sphinx-build docs _build 2>&1 | docs-output-filter
 
 # Process a remote build log (e.g., ReadTheDocs)
-mkdocs-output-filter --url https://app.readthedocs.org/projects/myproject/builds/12345/
+docs-output-filter --url https://app.readthedocs.org/projects/myproject/builds/12345/
 ```
+
+> **Tip:** Wrapper mode (`--`) is the easiest way to use docs-output-filter. It runs the command for you, automatically captures both stdout and stderr, and fixes buffering issues with sphinx-autobuild. No `2>&1` needed.
+
+> **Note:** If using pipe mode, `2>&1` is important — Sphinx writes warnings to stderr. Without it, warnings bypass the filter.
 
 > **Note:** Use `--livereload` with `mkdocs serve` due to a [Click 8.3.x bug](https://github.com/mkdocs/mkdocs/issues/4032).
 
@@ -115,10 +122,11 @@ mkdocs-output-filter --url https://app.readthedocs.org/projects/myproject/builds
 
 | Feature | Description |
 |---------|-------------|
+| **Multi-tool support** | MkDocs and Sphinx with auto-detection |
 | **Filtered output** | Shows WARNING and ERROR messages, hides routine INFO |
-| **Code blocks** | Syntax-highlighted code that caused markdown_exec errors |
-| **Location info** | File, session name, and line number extraction |
-| **Streaming mode** | Real-time output for `mkdocs serve` with rebuild detection |
+| **Code blocks** | Syntax-highlighted code for markdown_exec and myst-nb errors |
+| **Location info** | File, line number, session name, warning codes |
+| **Streaming mode** | Real-time output for `mkdocs serve` / `sphinx-autobuild` with rebuild detection |
 | **Interactive mode** | Toggle between raw/filtered with keyboard (`-i`) |
 | **Remote logs** | Fetch and parse build logs from ReadTheDocs and other CI |
 | **MCP server** | API for AI code assistants like Claude Code |
@@ -127,32 +135,34 @@ mkdocs-output-filter --url https://app.readthedocs.org/projects/myproject/builds
 
 | Flag | Description |
 |------|-------------|
+| `-- COMMAND` | Run command as subprocess (recommended, no `2>&1` needed) |
 | `-v, --verbose` | Show full tracebacks and code blocks |
 | `-e, --errors-only` | Hide warnings, show only errors |
 | `--no-color` | Disable colored output |
-| `--raw` | Pass through unfiltered mkdocs output |
+| `--raw` | Pass through unfiltered build output |
 | `-i, --interactive` | Toggle raw/filtered with keyboard |
 | `--url URL` | Fetch and process a remote build log |
+| `--tool mkdocs\|sphinx\|auto` | Force build tool detection (default: auto) |
 | `--share-state` | Write state for MCP server integration |
 
 ## MCP Server (for AI Assistants)
 
-Enable AI code assistants to access mkdocs build issues:
+Enable AI code assistants to access build issues:
 
 ```bash
-# Terminal 1: Run mkdocs with state sharing
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter --share-state
+# Terminal 1: Run build tool with state sharing
+mkdocs serve --livereload 2>&1 | docs-output-filter --share-state
 
 # Terminal 2: AI assistant connects via MCP
-mkdocs-output-filter --mcp --watch
+docs-output-filter --mcp --watch
 ```
 
 Add to Claude Code's MCP config (`.claude/settings.local.json`):
 ```json
 {
   "mcpServers": {
-    "mkdocs-output-filter": {
-      "command": "mkdocs-output-filter",
+    "docs-output-filter": {
+      "command": "docs-output-filter",
       "args": ["--mcp", "--watch"]
     }
   }

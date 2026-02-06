@@ -1,17 +1,18 @@
-# mkdocs-output-filter
+# docs-output-filter
 
-**Filter mkdocs output to show only what matters: warnings and errors.**
+**Filter documentation build output to show only what matters: warnings and errors.**
 
-Includes an [MCP server](mcp-server.md) for AI code assistant integration (Claude Code, etc.).
+Works with **MkDocs** and **Sphinx** (including sphinx-autobuild, Jupyter Book, myst-nb). Includes an [MCP server](mcp-server.md) for AI code assistant integration (Claude Code, etc.).
 
 ## What It Does
 
-mkdocs-output-filter processes mkdocs build output and:
+docs-output-filter processes documentation build output and:
 
 - **Shows** WARNING and ERROR level messages with rich formatting
-- **Highlights** code execution errors (markdown_exec) with syntax-highlighted code blocks
-- **Extracts** file locations, session names, and line numbers
+- **Highlights** code execution errors (markdown_exec, myst-nb) with syntax-highlighted code blocks
+- **Extracts** file locations, line numbers, session names, and warning codes
 - **Hides** routine INFO messages (building, cleaning, copying assets)
+- **Auto-detects** MkDocs vs Sphinx from the output
 
 ## Before & After
 
@@ -99,45 +100,56 @@ Summary: <span class="yellow">2 warning(s)</span>
 
 ```bash
 # With uv (recommended)
-uv tool install mkdocs-output-filter
+uv tool install docs-output-filter
 
 # With pip
-pip install mkdocs-output-filter
+pip install docs-output-filter
 ```
 
 ## Quick Start
 
 ```bash
-# Filter build output
-mkdocs build 2>&1 | mkdocs-output-filter
+# Wrapper mode (recommended) — just prefix your build command
+docs-output-filter -- mkdocs build
+docs-output-filter -- mkdocs serve --livereload
+docs-output-filter -- sphinx-autobuild docs _build/html
 
-# Filter serve output (stays running, updates on file changes)
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter
-
-# With AI assistant integration (writes state for MCP server)
-mkdocs serve --livereload 2>&1 | mkdocs-output-filter --share-state
+# Pipe mode — traditional Unix pipe
+mkdocs build 2>&1 | docs-output-filter
+sphinx-build docs _build 2>&1 | docs-output-filter
 ```
+
+!!! tip "Wrapper mode is the easiest way"
+    Wrapper mode (`--`) runs the command for you, automatically captures both stdout and stderr, and fixes buffering issues with sphinx-autobuild. No `2>&1` needed.
+
+!!! note "Why `2>&1` in pipe mode?"
+    Sphinx writes warnings and errors to stderr. Without `2>&1`, they bypass the filter entirely. MkDocs writes everything to stdout, so `2>&1` is optional but harmless. Wrapper mode handles this automatically.
 
 ## Features
 
 | Feature | Description |
 |---------|-------------|
+| **Multi-tool support** | MkDocs and Sphinx with auto-detection |
 | **Filtered output** | Shows WARNING and ERROR messages, hides routine INFO |
-| **Code blocks** | Syntax-highlighted code that caused markdown_exec errors |
-| **Location info** | File, session name, and line number extraction |
-| **Streaming mode** | Real-time output for `mkdocs serve` with rebuild detection |
+| **Code blocks** | Syntax-highlighted code that caused markdown_exec or myst-nb errors |
+| **Location info** | File, line number, session name, warning codes |
+| **Streaming mode** | Real-time output for `mkdocs serve` / `sphinx-autobuild` with rebuild detection |
 | **Interactive mode** | Toggle between raw/filtered with keyboard (`-i`) |
+| **Remote logs** | Fetch and parse build logs from ReadTheDocs and other CI |
 | **MCP server** | API for AI code assistants like Claude Code |
 
 ## Options
 
 | Flag | Description |
 |------|-------------|
+| `-- COMMAND` | Run command as subprocess (recommended, no `2>&1` needed) |
 | `-v, --verbose` | Show full tracebacks and code blocks |
 | `-e, --errors-only` | Hide warnings, show only errors |
 | `--no-color` | Disable colored output |
-| `--raw` | Pass through unfiltered mkdocs output |
+| `--raw` | Pass through unfiltered build output |
 | `-i, --interactive` | Toggle raw/filtered with keyboard |
+| `--url URL` | Fetch and process a remote build log |
+| `--tool mkdocs\|sphinx\|auto` | Force build tool detection (default: auto) |
 | `--share-state` | Write state for MCP server integration |
 
 See [Usage](usage.md) for more details and [MCP Server](mcp-server.md) for AI assistant integration.
