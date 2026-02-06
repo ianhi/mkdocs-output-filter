@@ -1,9 +1,9 @@
 site_name: docs-output-filter
 site_description: Filter documentation build output (MkDocs, Sphinx) to show only warnings and errors
-site_url: https://ianhi.github.io/mkdocs-output-filter
+site_url: https://ianhi.github.io/docs-output-filter
 
-repo_name: ianhi/mkdocs-output-filter
-repo_url: https://github.com/ianhi/mkdocs-output-filter
+repo_name: ianhi/docs-output-filter
+repo_url: https://github.com/ianhi/docs-output-filter
 
 theme:
   name: material

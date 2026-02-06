@@ -6,7 +6,7 @@ docs-output-filter includes an MCP (Model Context Protocol) server that allows A
 
 The MCP server provides tools for:
 
-- **`get_issues`** - Get current warnings and errors from the last build
+- **`get_issues`** - Get current warnings/errors and INFO message summary from the last build
 - **`get_issue_details`** - Get detailed information about a specific issue
 - **`get_info`** - Get INFO-level messages (broken links, missing nav entries, deprecation warnings, etc.)
 - **`rebuild`** - Trigger a new build and get updated issues
@@ -30,17 +30,14 @@ docs-output-filter --share-state -- mkdocs serve --livereload
 docs-output-filter --share-state -- sphinx-autobuild docs _build/html
 ```
 
-**Step 2:** Configure Claude Code to use the MCP server. Add to `.claude/settings.local.json` in your project:
+**Step 2:** Configure Claude Code to use the MCP server:
 
-```json
-{
-  "mcpServers": {
-    "docs-output-filter": {
-      "command": "docs-output-filter",
-      "args": ["--mcp", "--watch"]
-    }
-  }
-}
+```bash
+# Add for all projects (user scope)
+claude mcp add --scope user --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
+
+# Or add for just this project (local scope)
+claude mcp add --transport stdio docs-output-filter -- docs-output-filter --mcp --watch
 ```
 
 The server auto-detects the project from Claude Code's working directory - no need to specify a path!
@@ -79,7 +76,7 @@ sphinx-build docs _build 2>&1 | docs-output-filter --mcp --pipe
 
 ### `get_issues`
 
-Get current warnings and errors.
+Get current warnings and errors. Also includes a summary of INFO-level messages (broken links, missing nav, etc.) so you know to check `get_info` for details.
 
 **Parameters:**
 
@@ -88,7 +85,7 @@ Get current warnings and errors.
 | `filter` | `string` | Filter issues: `"all"`, `"errors"`, or `"warnings"` |
 | `verbose` | `boolean` | Include full code blocks and tracebacks |
 
-**Returns:** JSON with issue count and array
+**Returns:** JSON with issue count, array, and INFO message summary
 
 ```json
 {
@@ -103,7 +100,12 @@ Get current warnings and errors.
       "message": "ValueError: test error",
       "file": "docs/index.md → session 'test' → line 8"
     }
-  ]
+  ],
+  "info_summary": {
+    "broken_link": 5,
+    "missing_nav": 2,
+    "total": 7
+  }
 }
 ```
 

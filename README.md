@@ -171,13 +171,13 @@ Add to Claude Code's MCP config (`.claude/settings.local.json`):
 
 ## Documentation
 
-Full documentation: https://ianhi.github.io/mkdocs-output-filter/
+Full documentation: https://ianhi.github.io/docs-output-filter/
 
 ## Development
 
 ```bash
-git clone https://github.com/ianhi/mkdocs-output-filter
-cd mkdocs-output-filter
+git clone https://github.com/ianhi/docs-output-filter
+cd docs-output-filter
 uv sync
 uv run pre-commit install
 uv run pytest

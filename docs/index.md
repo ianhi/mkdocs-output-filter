@@ -1,5 +1,9 @@
 # docs-output-filter
 
+```bash
+docs-output-filter -- mkdocs serve --livereload
+```
+
 **Filter documentation build output to show only what matters: warnings and errors.**
 
 Works with **MkDocs** and **Sphinx** (including sphinx-autobuild, Jupyter Book, myst-nb). Includes an [MCP server](mcp-server.md) for AI code assistant integration (Claude Code, etc.).
