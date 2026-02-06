@@ -103,10 +103,13 @@ Summary: <span class="yellow">2 warning(s)</span>
 ## Install
 
 ```bash
-# With uv (recommended)
+# Run directly (no install needed)
+uvx docs-output-filter -- mkdocs build
+
+# Or install permanently
 uv tool install docs-output-filter
 
-# With pip
+# Or with pip
 pip install docs-output-filter
 ```
 
