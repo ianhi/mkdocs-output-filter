@@ -5,8 +5,8 @@
 Works with **MkDocs** and **Sphinx** (including sphinx-autobuild, Jupyter Book, myst-nb).
 
 ```bash
-uvx docs-output-filter -- mkdocs serve --livereload  # no install needed
-uv tool install docs-output-filter                    # or install permanently
+uvx docs-output-filter -- mkdocs serve --livereload    # no install needed
+uv tool install docs-output-filter                     # or install permanently
 ```
 
 For AI code assistants ([details](mcp-server.md)):
